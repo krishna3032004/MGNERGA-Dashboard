@@ -1,71 +1,3 @@
-// import connectToDatabase from "@/lib/mongodb";
-// import District from "@/models/District";
-
-// export async function GET(req) {
-//     await connectToDatabase();
-
-//     const API_KEY = "579b464db66ec23bdd000001ec6750bb1df547757133216e45834aae";
-// const RESOURCE_ID = "ee03643a-ee4c-48c2-ac30-9f2ff26ab722";
-//     // Fetch MGNREGA API
-//     const res = await fetch(`https://api.data.gov.in/resource/ee03643a-ee4c-48c2-ac30-9f2ff26ab722?api-key=579b464db66ec23bdd000001ec6750bb1df547757133216e45834aae&format=json&offset=0&limit=50&filters%5Bstate_name%5D=MADHYA%20PRADESH`); // replace with actual API
-//     // const res = await fetch(`https://data.gov.in/api/3/action/datastore_search?resource_id=${RESOURCE_ID}&limit=50&filters=${encodeURIComponent(JSON.stringify({ state_name: "MADHYA PRADESH" }))}&api-key=${API_KEY}`); // replace with actual API
-//     const data = await res.json();
-//     // 579b464db66ec23bdd000001392e4fcb2183417b7a683a4d7aa61cec
-//     // Save to MongoDB
-//     //   for (const item of data) {
-//     //     await District.findOneAndUpdate(
-//     //       { name: item.district, month: item.month, year: item.year },
-//     //       {
-//     //         name: item.district,
-//     //         state: item.state,
-//     //         month: item.month,
-//     //         year: item.year,
-//     //         peopleBenefited: item.people,
-//     //         wagesPaid: item.wages,
-//     //         workdaysCreated: item.workdays,
-//     //       },
-//     //       { upsert: true }
-//     //     );
-//     //   }
-//     console.log(data)
-
-//     return new Response(JSON.stringify({ success: true }));
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // app/api/fetch-district-data/route.js
 import connectToDatabase from "@/lib/mongodb";
 import District from "@/models/District";
@@ -73,7 +5,9 @@ import District from "@/models/District";
 const RESOURCE_URL = "https://api.data.gov.in/resource/ee03643a-ee4c-48c2-ac30-9f2ff26ab722";
 const STATE_NAME = "MADHYA PRADESH";
 // set FIN_YEAR to specific year like "2023-2024" or "" to fetch all years
-const FIN_YEAR = "2025-2026";
+// const FIN_YEAR = "2025-2026";
+const FETCH_MODE = process.env.FETCH_MODE || "monthly";
+const FETCH_PREVIOUS = process.env.FETCH_PREVIOUS === "1";
 const LIMIT = process.env.DATA_GOV_LIMIT ? parseInt(process.env.DATA_GOV_LIMIT, 10) : 50;
 const API_KEY = process.env.DATA_GOV_KEY || "579b464db66ec23bdd000001ec6750bb1df547757133216e45834aae";
 
@@ -99,11 +33,42 @@ function safeFloat(val) {
   return Number.isNaN(n) ? 0 : n;
 }
 
+/** return month name like "March" for a Date object */
+function monthNameFromDate(d) {
+  return d.toLocaleString("en-US", { month: "long" });
+}
+
+/** compute financial year like "2025-2026" from a Date (India FY Apr->Mar) */
+function finYearFromDate(d) {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1; // 1..12
+  const start = m >= 4 ? y : y - 1;
+  return `${start}-${start + 1}`;
+}
+
+/** get target Date object: current or previous month depending on FETCH_PREVIOUS */
+function getTargetDate() {
+  const now = new Date();
+  if (FETCH_PREVIOUS) {
+    // clone and subtract one month
+    const t = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return t;
+  }
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
 export async function GET() {
   await connectToDatabase();
 
+  
+  const targetDate = getTargetDate();
+  const TARGET_MONTH = monthNameFromDate(targetDate); // e.g. "March"
+  const FIN_YEAR = finYearFromDate(targetDate); // e.g. "2025-2026"
+  // For logging/response
   let offset = 0;
   let totalFetched = 0;
+  let totalUpserted = 0;
+  let totalUpdated = 0;
 
   try {
     while (true) {
@@ -116,7 +81,16 @@ export async function GET() {
 
       // add filters in the bracketed param style required by endpoint
       params.append("filters[state_name]", STATE_NAME);
-      if (FIN_YEAR) params.append("filters[fin_year]", FIN_YEAR);
+      // if (FIN_YEAR) params.append("filters[fin_year]", FIN_YEAR);
+
+       // when yearly mode we still restrict to FIN_YEAR (but that may be many records)
+      if (FETCH_MODE === "yearly") {
+        params.append("filters[fin_year]", FIN_YEAR);
+      } else {
+        // monthly mode -> fetch only target month & fin_year (recommended)
+        params.append("filters[fin_year]", FIN_YEAR);
+        params.append("filters[month]", TARGET_MONTH);
+      }
 
       const url = `${RESOURCE_URL}?${params.toString()}`;
 
@@ -161,7 +135,8 @@ export async function GET() {
       if (!records.length) {
         // if nothing on first page, return message
         if (offset === 0) {
-          return new Response(JSON.stringify({ success: true, message: "No records returned", totalFetched: 0 }), { status: 200 });
+          return new Response(JSON.stringify({ success: true, message: "No records returned", totalFetched: 0 , fin_year: FIN_YEAR,
+            month: FETCH_MODE === "monthly" ? TARGET_MONTH : "ALL"}), { status: 200 });
         }
         break;
       }
@@ -208,50 +183,70 @@ export async function GET() {
           : 0;
         const completionRatePercent = Math.round(completionRate * 100) / 100; // 2 decimals
 
-        await District.findOneAndUpdate(
-          { name: districtName, month, year },
-          {
-            name: districtName,
-            districtCode,
-            state: STATE_NAME,
-            month,
-            financialYear,
-            year,
-            Total_Households_Worked,
-            Total_Individuals_Worked,
-            Total_No_of_Active_Job_Cards,
-            Total_No_of_Active_Workers,
-            Total_No_of_HHs_completed_100_Days_of_Wage_Employment,
-            Total_No_of_JobCards_issued,
-            Total_No_of_Works_Takenup,
-            Number_of_Completed_Works,
-            Number_of_Ongoing_Works,
-            Wages: Wages_val,
-            Persondays_of_Central_Liability_so_far: Persondays,
-            Women_Persondays,
-            SC_persondays,
-            ST_persondays,
-            Approved_Labour_Budget,
-            Average_Wage_rate_per_day_per_person,
-            Average_days_of_employment_provided_per_Household,
-            percentage_payments_gererated_within_15_days,
-            peopleBenefited,
-            wagesPaid,
-            workdaysCreated,
-            completionRatePercent,
-            raw: item,
-          },
-          { upsert: true, setDefaultsOnInsert: true }
-        );
+       // upsert and detect if new vs updated (timestamps: true in model required)
+        try {
+          const res = await District.findOneAndUpdate(
+            { name: districtName, month, year },
+            {
+              name: districtName,
+              districtCode,
+              state: STATE_NAME,
+              month,
+              financialYear,
+              year,
+              Total_Households_Worked,
+              Total_Individuals_Worked,
+              Total_No_of_Active_Job_Cards,
+              Total_No_of_Active_Workers,
+              Total_No_of_HHs_completed_100_Days_of_Wage_Employment,
+              Total_No_of_JobCards_issued,
+              Total_No_of_Works_Takenup,
+              Number_of_Completed_Works,
+              Number_of_Ongoing_Works,
+              Wages: Wages_val,
+              Persondays_of_Central_Liability_so_far: Persondays,
+              Women_Persondays,
+              SC_persondays,
+              ST_persondays,
+              Approved_Labour_Budget,
+              Average_Wage_rate_per_day_per_person,
+              Average_days_of_employment_provided_per_Household,
+              percentage_payments_gererated_within_15_days,
+              peopleBenefited,
+              wagesPaid,
+              workdaysCreated,
+              completionRatePercent,
+              raw: item,
+            },
+            { upsert: true, setDefaultsOnInsert: true, new: true }
+          );
 
+          totalFetched++;
+
+          // If model uses timestamps: true then createdAt === updatedAt when newly inserted
+          if (res && res.createdAt && res.updatedAt && String(res.createdAt) === String(res.updatedAt)) {
+            totalUpserted++;
+          } else {
+            totalUpdated++;
+          }
+        } catch (dbErr) {
+          console.error("DB upsert error for", districtName, month, year, dbErr);
+        }
       }
 
-      // if fewer than limit returned -> last page
       if (records.length < LIMIT) break;
       offset += LIMIT;
     }
 
-    return new Response(JSON.stringify({ success: true, message: `Fetched ${totalFetched} records.` }), { status: 200 });
+    return new Response(JSON.stringify({
+      success: true,
+      message: `Fetched ${totalFetched} records.`,
+      fetched: totalFetched,
+      upserted: totalUpserted,
+      updated: totalUpdated,
+      fin_year: FIN_YEAR,
+      month: FETCH_MODE === "monthly" ? TARGET_MONTH : "ALL"
+    }), { status: 200 });
   } catch (err) {
     console.error("Unexpected error in fetch-district-data:", err);
     return new Response(JSON.stringify({ success: false, error: String(err) }), { status: 500 });

@@ -22,8 +22,8 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 
 export default function DashboardClient() {
   const router = useRouter();
-  const sp = useSearchParams();
-  const initial = sp?.get("district") || "";
+  // const sp = useSearchParams();
+  // const initial = sp?.get("district") || "";
   // const [district, setDistrict] = useState(initial || (typeof window !== "undefined" ? localStorage.getItem("mgnrega_last_district") || "" : ""));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -32,7 +32,7 @@ export default function DashboardClient() {
   const [explainOpen, setExplainOpen] = useState(false);
   const [explainMetric, setExplainMetric] = useState(null);
   const [mounted, setMounted] = useState(false);
-  const [district, setDistrict] = useState(initial ? initial : "");
+  const [district, setDistrict] = useState("");
 
   const [open, setOpen] = useState(false);
   const ctrlRef = useRef(null);

@@ -32,16 +32,25 @@ export default function DashboardClient() {
   const [explainOpen, setExplainOpen] = useState(false);
   const [explainMetric, setExplainMetric] = useState(null);
   const [mounted, setMounted] = useState(false);
-  const [district, setDistrict] = useState(initial? initial :"");
+  const [district, setDistrict] = useState(initial ? initial : "");
 
   const [open, setOpen] = useState(false);
   const ctrlRef = useRef(null);
 
+  // useEffect(() => {
+  //   setMounted(true);
+  //   const initialDistrict = sp?.get("district") || localStorage.getItem("mgnrega_last_district") || "";
+  //   if (initialDistrict) setDistrict(initialDistrict);
+  // }, [sp]);
   useEffect(() => {
     setMounted(true);
-    const initialDistrict = sp?.get("district") || localStorage.getItem("mgnrega_last_district") || "";
-    if (initialDistrict) setDistrict(initialDistrict);
-  }, [sp]);
+  }, [])
+  useEffect(() => {
+    const initialDistrict =
+      localStorage.getItem("mgnrega_last_district") || "";
+    setDistrict(initialDistrict);
+  }, [])
+
 
   useEffect(() => {
     if (!district) return;

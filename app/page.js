@@ -223,7 +223,7 @@ export default function Home() {
         const address = json.address || {};
         console.log(address)
         const districtName =
-          address.city_district ||
+          address.city_district.split(" ")[0];
           address.district ||
           address.county ||
           address.state_district ||

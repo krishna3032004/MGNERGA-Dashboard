@@ -34,7 +34,7 @@ export default function Home() {
         const address = json.address || {};
         console.log(address)
         const districtName =
-          address.city_district.split(" ")[0];
+          address.city_district.split(" ")[0] ||
           address.district ||
           address.county ||
           address.state_district ||
@@ -53,6 +53,7 @@ export default function Home() {
         const norm = districtName.trim();
         // Try direct navigation with normalized name; if your district list uses different names,
         // DistrictSelectorAccessible's internal matching will also work if user clicks the 📍 button there.
+        localStorage.setItem("mgnrega_last_district", norm);
         router.push(`/dashboard?district=${encodeURIComponent(norm)}`);
       } catch (err) {
         console.error("Reverse geocode failed", err);

@@ -23,6 +23,7 @@ export default function DistrictSelector({ onSelect }) {
         onChange={(e) => {
           setSelected(e.target.value);
           onSelect(e.target.value);
+          localStorage.setItem("mgnrega_last_district", e.target.value);
         }}
       >
         <option value="">--Choose District--</option>

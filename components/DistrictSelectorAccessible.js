@@ -39,7 +39,7 @@ export default function DistrictSelectorAccessible({ onSelect }) {
       const data = await res.json();
       console.log(data)
       const districtName =
-        data.address.city_district ||
+        data.address.city_district.split(" ")[0] ||
         data.address.county ||
         data.address.state_district ||
         data.address.state ||
